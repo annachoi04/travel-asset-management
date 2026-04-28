@@ -23,7 +23,7 @@ const quickActions = [
 function ChatContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { hasCompletedOnboarding, trips, currentTripId, updateCurrentSavings, getSavingsCapacity } = useTravelStore()
+  const { hasCompletedOnboarding, trips, currentTripId, updateCurrentSavings, getSavingsCapacity, financialInfo } = useTravelStore()
   const [isHydrated, setIsHydrated] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
@@ -43,23 +43,14 @@ function ChatContent() {
     }
   }, [isHydrated, hasCompletedOnboarding, router])
 
-  // Initial greeting
   useEffect(() => {
     if (isHydrated && currentTrip && messages.length === 0) {
       const action = searchParams.get("action")
       let greeting = `안녕하세요! ${currentTrip.city} 여행을 함께 준비할게요 ✈️\n오늘 무엇을 도와드릴까요?`
-      
       if (action === "adjust") {
         greeting = `어떤 부분을 바꿔볼까요? 숙박을 낮추거나, 날짜를 조정하거나, 예산을 다시 짤 수 있어요 ✏️`
       }
-      
-      setMessages([
-        {
-          id: "greeting",
-          role: "assistant",
-          content: greeting,
-        },
-      ])
+      setMessages([{ id: "greeting", role: "assistant", content: greeting }])
     }
   }, [isHydrated, currentTrip, searchParams, messages.length])
 
@@ -67,94 +58,87 @@ function ChatContent() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
 
-  const generateResponse = (userMessage: string): string => {
-    const lowerMessage = userMessage.toLowerCase()
-    const savingsCapacity = getSavingsCapacity()
-    
-    if (lowerMessage.includes("지출") || lowerMessage.includes("썼어")) {
-      // Try to extract amount
-      const amountMatch = userMessage.match(/(\d+(?:,\d+)?(?:\.\d+)?)\s*(?:만원|원)?/)
-      if (amountMatch) {
-        let amount = parseInt(amountMatch[1].replace(/,/g, ""))
-        if (userMessage.includes("만원")) {
-          amount *= 10000
-        }
-        return `${formatCurrency(amount)} 지출을 기록했어요! 💸\n\n오늘 남은 예산은 약 ${formatCurrency(Math.max(0, Math.floor(savingsCapacity / 30) - amount))}이에요.\n아껴쓰면 ${currentTrip?.city}가 더 가까워질 거예요!`
-      }
-      return "얼마를 지출하셨나요? '오늘 점심 15000원 썼어' 처럼 말씀해주세요!"
-    }
-    
-    if (lowerMessage.includes("수입") || lowerMessage.includes("입금") || lowerMessage.includes("받았")) {
-      const amountMatch = userMessage.match(/(\d+(?:,\d+)?(?:\.\d+)?)\s*(?:만원|원)?/)
-      if (amountMatch) {
-        let amount = parseInt(amountMatch[1].replace(/,/g, ""))
-        if (userMessage.includes("만원")) {
-          amount *= 10000
-        }
-        if (currentTrip) {
-          updateCurrentSavings(currentTrip.id, amount)
-        }
-        return `${formatCurrency(amount)} 저축을 추가했어요! 🎉\n\n${currentTrip?.city}까지 한 걸음 더 가까워졌어요!\n현재 총 저축액: ${formatCurrency((currentTrip?.currentSavings || 0) + amount)}`
-      }
-      return "얼마를 저축하셨나요? '이번달 50만원 저축했어' 처럼 말씀해주세요!"
-    }
-    
-    if (lowerMessage.includes("얼마") && (lowerMessage.includes("쓸 수") || lowerMessage.includes("사용"))) {
-      const dailyBudget = Math.floor(savingsCapacity / 30)
-      return `오늘 쓸 수 있는 돈은 약 ${formatCurrency(dailyBudget)}이에요! 💰\n\n이 페이스를 유지하면 ${currentTrip?.city} 여행 자금을 예정대로 모을 수 있어요 ✅`
-    }
-    
-    if (lowerMessage.includes("조정") || lowerMessage.includes("변경") || lowerMessage.includes("바꾸")) {
-      return `어떤 부분을 조정할까요? 🤔\n\n1️⃣ 여행 날짜 변경\n2️⃣ 숙박 등급 조정\n3️⃣ 예산 재계산\n4️⃣ 여행 스타일 변경\n\n원하시는 걸 말씀해주세요!`
-    }
-    
-    if (lowerMessage.includes("날짜")) {
-      return "출발일을 언제로 변경할까요? 예: '출발일 2025년 3월 15일로 바꿔줘'"
-    }
-    
-    if (lowerMessage.includes("숙박") || lowerMessage.includes("호텔")) {
-      return `현재 숙박 스타일은 '${currentTrip?.style.accommodationType}'이에요.\n\n🏨 호텔로 변경 (예산 +30%)\n🏠 에어비앤비로 변경 (예산 -20%)\n🛏️ 호스텔로 변경 (예산 -60%)\n\n어떤 걸로 바꿀까요?`
-    }
-    
-    if (lowerMessage.includes("항공") && lowerMessage.includes("업데이트")) {
-      return "항공권 가격을 확인 중이에요... ✈️\n\n실시간 가격 조회는 아래 링크에서 확인해주세요:\nhttps://www.google.com/travel/flights\n\n새로운 가격을 알려주시면 예산을 업데이트해드릴게요!"
-    }
-    
-    if (lowerMessage.includes("안녕") || lowerMessage.includes("하이") || lowerMessage.includes("hello")) {
-      return `안녕하세요! 😊\n${currentTrip?.city} 여행 준비는 잘 되고 있나요?\n무엇을 도와드릴까요?`
-    }
-    
-    if (lowerMessage.includes("고마워") || lowerMessage.includes("감사")) {
-      return "천만에요! 언제든 도움이 필요하면 말씀해주세요 😊\n좋은 여행이 되길 바랄게요! ✈️"
-    }
-    
-    return `말씀하신 내용을 확인했어요!\n\n다른 도움이 필요하시면 아래 중에서 선택해주세요:\n\n🧾 지출 기록\n💰 수입 추가\n📊 예산 확인\n✏️ 계획 조정`
-  }
-
-  const handleSend = () => {
+  const handleSend = async () => {
     if (!input.trim()) return
-    
+
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
       content: input.trim(),
     }
-    
+
     setMessages((prev) => [...prev, userMessage])
     setInput("")
     setIsTyping(true)
-    
-    // Simulate typing delay
-    setTimeout(() => {
-      const response = generateResponse(userMessage.content)
+
+    try {
+      const savingsCapacity = getSavingsCapacity()
+      const dailyBudget = Math.floor(savingsCapacity / 30)
+      const remainingAmount = (currentTrip?.targetAmount || 0) - (currentTrip?.currentSavings || 0)
+      const monthsLeft = currentTrip ? Math.ceil((new Date(currentTrip.departureDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24 * 30)) : 0
+
+      const systemPrompt = `당신은 여행 자산관리 에이전트입니다. 사용자가 여행 목표를 포기하지 않도록 오늘의 소비 결정을 도와주세요.
+
+## 사용자 여행 정보
+- 여행지: ${currentTrip?.city}, ${currentTrip?.country}
+- 출발일: ${currentTrip?.departureDate}
+- 여행 기간: ${currentTrip?.duration}박
+- 인원: ${currentTrip?.travelers}명
+- 여행까지 남은 개월: ${monthsLeft}개월
+
+## 사용자 재정 정보
+- 총 목표 경비: ${formatCurrency(currentTrip?.targetAmount || 0)}
+- 현재 저축액: ${formatCurrency(currentTrip?.currentSavings || 0)}
+- 남은 필요 금액: ${formatCurrency(remainingAmount)}
+- 월 저축 가능액: ${formatCurrency(savingsCapacity)}
+- 오늘 쓸 수 있는 돈: ${formatCurrency(dailyBudget)}
+
+## 핵심 역할
+1. 지출 보고 ('오늘 18000원 썼어') → 금액 파악하고 여행 목표와 연결해서 코멘트
+2. 소비 판단 요청 ('배달 시켜먹어도 돼?') → 재정 상황 기반으로 판단, 여행 날짜와 연결해서 경고
+3. 수입/저축 업데이트 ('30만원 저축했어') → 목표까지 얼마 남았는지 계산해서 알려주기
+4. 계획 조정 요청 → 구체적인 대안 제시 (숙박 등급 변경, 날짜 조정 등)
+5. 오늘 예산 질문 → 구체적인 금액과 함께 동기부여 메시지
+
+## 답변 규칙
+- 2-3문장으로 짧고 명확하게
+- 여행지 이름(${currentTrip?.city})으로 동기부여
+- 숫자는 항상 구체적으로 (원 단위로)
+- 친근하고 따뜻한 말투
+- 단순히 메뉴 목록 나열하지 말고 질문에 직접 답할 것
+- 지출이 많으면 여행 날짜가 며칠 늦어지는지 계산해서 경고
+- 저축하면 여행까지 며칠 당겨지는지 계산해서 칭찬`
+
+      const conversationMessages = messages
+        .filter(m => m.id !== "greeting")
+        .concat(userMessage)
+        .map(m => ({ role: m.role, content: m.content }))
+
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: conversationMessages,
+          system: systemPrompt,
+        }),
+      })
+
+      const data = await response.json()
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: response,
+        content: data.content || "죄송해요, 잠시 후 다시 시도해주세요.",
       }
       setMessages((prev) => [...prev, assistantMessage])
+    } catch (error) {
+      setMessages((prev) => [...prev, {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content: "죄송해요, 연결에 문제가 생겼어요. 잠시 후 다시 시도해주세요.",
+      }])
+    } finally {
       setIsTyping(false)
-    }, 800)
+    }
   }
 
   const handleQuickAction = (text: string) => {
@@ -173,13 +157,9 @@ function ChatContent() {
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
-      {/* Header */}
       <header className="sticky top-0 z-40 bg-background border-b border-border px-4 py-3">
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => router.back()}
-            className="p-2 -ml-2 text-muted-foreground hover:text-foreground"
-          >
+          <button onClick={() => router.back()} className="p-2 -ml-2 text-muted-foreground hover:text-foreground">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <span className="text-2xl">{flag}</span>
@@ -187,25 +167,18 @@ function ChatContent() {
         </div>
       </header>
 
-      {/* Messages */}
       <main className="flex-1 overflow-y-auto px-4 py-4 pb-40">
         <div className="space-y-4">
           {messages.map((message, index) => (
             <div key={message.id}>
-              <div
-                className={cn(
-                  "max-w-[85%] rounded-2xl px-4 py-3",
-                  message.role === "user"
-                    ? "ml-auto bg-primary text-primary-foreground"
-                    : "bg-card text-card-foreground"
-                )}
-              >
-                <p className="whitespace-pre-wrap text-[15px] leading-relaxed">
-                  {message.content}
-                </p>
+              <div className={cn(
+                "max-w-[85%] rounded-2xl px-4 py-3",
+                message.role === "user"
+                  ? "ml-auto bg-primary text-primary-foreground"
+                  : "bg-card text-card-foreground"
+              )}>
+                <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{message.content}</p>
               </div>
-              
-              {/* Quick actions after first assistant message */}
               {message.role === "assistant" && index === 0 && (
                 <div className="flex flex-wrap gap-2 mt-3">
                   {quickActions.map((action) => (
@@ -221,7 +194,6 @@ function ChatContent() {
               )}
             </div>
           ))}
-          
           {isTyping && (
             <div className="max-w-[85%] bg-card text-card-foreground rounded-2xl px-4 py-3">
               <div className="flex gap-1">
@@ -231,12 +203,10 @@ function ChatContent() {
               </div>
             </div>
           )}
-          
           <div ref={messagesEndRef} />
         </div>
       </main>
 
-      {/* Input */}
       <div className="fixed bottom-16 left-0 right-0 bg-background border-t border-border px-4 py-3">
         <div className="flex items-center gap-3">
           <input
@@ -256,7 +226,6 @@ function ChatContent() {
           </button>
         </div>
       </div>
-
       <BottomNav />
     </div>
   )
